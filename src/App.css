@@ -49,7 +49,11 @@ body {
 }
 
 .chess-board tr:nth-child(odd) td:nth-child(odd).cell-selected {
-  background: rgb(184, 143, 154);
+  background: rgb(184, 163, 154);
+}
+
+.chess-board tr:nth-child(odd) td:nth-child(odd).cell-selectable {
+  background: red;
 }
 
 .chess-board tr:nth-child(even) td:nth-child(even) {
@@ -57,7 +61,11 @@ body {
 }
 
 .chess-board tr:nth-child(even) td:nth-child(even).cell-selected {
-  background: rgb(184, 143, 154);
+  background: rgb(184, 163, 154);
+}
+
+.chess-board tr:nth-child(even) td:nth-child(even).cell-selectable {
+  background: red;
 }
 
 .chess-board tr:nth-child(odd) td:nth-child(even) {
@@ -68,10 +76,18 @@ body {
   background: rgb(92, 82, 99);
 }
 
+.chess-board tr:nth-child(odd) td:nth-child(even).cell-selectable {
+  background: red;
+}
+
 .chess-board tr:nth-child(even) td:nth-child(odd) {
   background: rgb(112, 102, 119);
 }
 
 .chess-board tr:nth-child(even) td:nth-child(odd).cell-selected {
   background: rgb(92, 82, 99);
+}
+
+.chess-board tr:nth-child(even) td:nth-child(odd).cell-selectable {
+  background: red;
 }

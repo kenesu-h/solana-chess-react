@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import "./App.css";
 
 import { match, __ } from "ts-pattern";
-import { Option, Some, None } from "ts-results";
+import { Option, Some, None, Result, Ok, Err } from "ts-results";
 import { Position, Color, PieceType, ChessPiece, ChessModel } from "./model";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import IconDefinition from "@fortawesome/fontawesome-svg-core";
@@ -16,9 +16,10 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 
 const App = () => {
-  let model: ChessModel = new ChessModel();
+  // let model: ChessModel = new ChessModel();
 
   let [selected, setSelected] = useState(None as Option<Position>);
+  let [model, setModel] = useState(new ChessModel());
 
   function pieceTypeToIcon(
     piece_type: PieceType
@@ -82,12 +83,53 @@ const App = () => {
     );
   }
 
+  function renderSelectableCell(
+    moves: Position[], maybe_piece: Option<ChessPiece>, row: number, col: number
+  ): JSX.Element {
+    let position: Position = new Position(row, col);
+    return (
+      <td
+        className="cell-selectable"
+        onClick={
+          () => {
+            console.log(model.move_piece_at(selected.unwrap(), position));
+            setSelected(None);
+            setModel(model);
+          }
+        }
+      >
+        {
+          maybe_piece.some && renderPiece(maybe_piece.unwrap())
+        }
+      </td>
+    );
+  }
+
   function renderCells(
     cells: Option<ChessPiece>[], row: number
   ): JSX.Element[] {
     let rendered: JSX.Element[] = [];
-    for (let j: number = 0; j < 8; j++) {
-      rendered.push(renderCell(cells[j], row, j));
+    if (selected.none) {
+      for (let j: number = 0; j < 8; j++) {
+        rendered.push(renderCell(cells[j], row, j));
+      }
+    } else {
+      let moves_result: Result<Position[], string>
+        = model.get_moves_at(selected.unwrap());
+      if (moves_result.err) {
+        for (let j: number = 0; j < 8; j++) {
+          rendered.push(renderCell(cells[j], row, j));
+        }
+      } else {
+        let moves: Position[] = moves_result.unwrap();
+        for (let j: number = 0; j < 8; j++) {
+          if (moves.some((p) => p.equals(new Position(row, j)))) {
+            rendered.push(renderSelectableCell(moves, cells[j], row, j));
+          } else {
+            rendered.push(renderCell(cells[j], row, j));
+          }
+        }
+      }
     }
     return rendered;
   }

@@ -28,17 +28,21 @@ export class Position {
     this.col = col;
   }
 
-  public get_row() {
+  public get_row(): number {
     return this.row;
   }
 
-  public get_col() {
+  public get_col(): number {
     return this.col;
   }
 
-  public equals(other: Position) {
+  public equals(other: Position): boolean {
     return this.get_row() == other.get_row()
         && this.get_col() == other.get_col();
+  }
+
+  public to_string(): string {
+    return "(" + this.row + ", " + this.col + ")";
   }
 }
 
@@ -157,21 +161,52 @@ export class ChessModel {
     }
   }
 
-  public get_moves_at(pos: Position): Position[] {
-    let moves: Position[] = [];
-
-    return moves;
+  public get_moves_at(pos: Position): Result<Position[], string> {
+    let cell_result: Result<Option<ChessPiece>, string> = this.get_cell(pos);
+    if (cell_result.err) {
+      return Err(cell_result.val as string);
+    } else {
+      let cell: Option<ChessPiece> = cell_result.unwrap();
+      if (cell.none) {
+        return Err("No piece found at " + pos.to_string());
+      } else {
+        let piece: ChessPiece = cell.unwrap();
+        return Ok(this.possible_moves(pos, piece.get_piece_type()).unwrap());
+      }
+    }
   }
 
-  public move_piece_at(pos: Position, dest: Position): void {
-    
+  public move_piece_at(pos: Position, dest: Position): Result<None, string> {
+    let moves_result: Result<Position[], string> = this.get_moves_at(pos);
+    if (moves_result.err) {
+      return Err(moves_result.val as string);
+    } else {
+      let piece: ChessPiece = this.get_cell(pos).unwrap().unwrap();
+      let moves: Position[] = moves_result.unwrap();
+      if (moves.some((p) => p.equals(dest))) {
+        this.board[dest.get_row()][dest.get_col()] = Some(piece);
+        this.board[pos.get_row()][pos.get_col()] = None;
+        piece.set_moved(true);
+        return Ok(None)
+      } else {
+        return Err(
+          "The piece at " + pos.to_string() + " can't be moved to "
+          + "its destination at " + dest.to_string()
+        );
+      }
+    }
   }
 
   private possible_moves(
     pos: Position, piece_type: PieceType
   ): Result<Position[], string> {
     return match<PieceType>(piece_type)
-      .with(PieceType.Pawn, this.all_pawn_moves)
+      .with(PieceType.Pawn, () => this.all_pawn_moves(pos))
+      .with(PieceType.Bishop, () => this.bishop_moves(pos))
+      .with(PieceType.Knight, () => this.knight_moves(pos))
+      .with(PieceType.Rook, () => this.all_rook_moves(pos))
+      .with(PieceType.Queen, () => this.queen_moves(pos))
+      .with(PieceType.King, () => this.king_moves(pos))
       .run();
   }
 
@@ -186,7 +221,7 @@ export class ChessModel {
         () => Ok(
           moves_result.unwrap().concat(
             this.pawn_en_passant(pos).unwrap()
-          )
+          ) 
         )
       )
       .run();
@@ -216,14 +251,16 @@ export class ChessModel {
                     () => {
                       // Can move one forward if it's empty.
                       let one_forward: Position = new Position(
-                        pos.get_row(),
-                        pos.get_col() + match<Color>(piece.get_color())
+                        pos.get_row() + match<Color>(piece.get_color())
                           .with(Color.White, () => -1)
                           .with(Color.Black, () => 1)
-                          .run()
+                          .run(),
+                        pos.get_col()
                       );
                       let one_forward_result: Result<boolean, string>
                         = this.get_if_empty_cell(one_forward);
+                      console.log(one_forward);
+                      console.log(one_forward_result);
                       if (
                         one_forward_result.ok
                         && one_forward_result.unwrap()
@@ -232,12 +269,12 @@ export class ChessModel {
                       }
 
                       // Can move two forward if it's empty and haven't moved.
-                      let two_forward: Position = new Position(
-                        pos.get_row(),
-                        pos.get_col() + match<Color>(piece.get_color())
+                      let two_forward: Position = new Position( 
+                        pos.get_row() + match<Color>(piece.get_color())
                           .with(Color.White, () => -2)
                           .with(Color.Black, () => 2)
-                          .run()
+                          .run(),
+                        pos.get_col()
                       );
                       let two_forward_result: Result<boolean, string>
                         = this.get_if_empty_cell(two_forward);
@@ -274,27 +311,29 @@ export class ChessModel {
                         );
                       }
 
-                      let diagonal_left_result: Result<boolean, string>
-                        = this.get_enemy_piece(
+                      let diagonal_left_takeable_result
+                        : Result<boolean, string>
+                        = this.get_if_takeable_piece(
                             piece.get_color(),
                             diagonal_left
                       );
   
-                      let diagonal_right_result: Result<boolean, string>
-                        = this.get_enemy_piece(
+                      let diagonal_right_takeable_result
+                        : Result<boolean, string>
+                        = this.get_if_takeable_piece(
                             piece.get_color(),
                             diagonal_right
                       );
 
                       if (
-                        diagonal_left_result.ok
-                        && diagonal_left_result.unwrap()
+                        diagonal_left_takeable_result.ok
+                        && diagonal_left_takeable_result.unwrap()
                       ) {
                         moves.push(diagonal_left);
                       }
                       if (
-                        diagonal_right_result.ok
-                        && diagonal_right_result.unwrap()
+                        diagonal_right_takeable_result.ok
+                        && diagonal_right_takeable_result.unwrap()
                       ) {
                         moves.push(diagonal_right);
                       }
@@ -362,27 +401,549 @@ export class ChessModel {
                         pos.get_col() + 1
                       );
 
-                      let en_passant_enemy_left_result: Result<boolean, string>
+                      let en_passant_takeable_left_result: Result<boolean, string>
                         = this.get_enemy_piece(
                           piece.get_color(), en_passant_enemy_left
                         );
-                      let en_passant_enemy_right_result:
+                      let en_passant_takeable_right_result:
                         Result<boolean, string>
                         = this.get_enemy_piece(
                           piece.get_color(), en_passant_enemy_right
                         );
 
                       if (
-                        en_passant_enemy_left_result.ok
-                        && en_passant_enemy_left_result.unwrap()
+                        en_passant_takeable_left_result.ok
+                        && en_passant_takeable_left_result.unwrap()
                       ) {
                         moves.push(en_passant_left);
                       }
                       if (
-                        en_passant_enemy_right_result.ok
-                        && en_passant_enemy_right_result.unwrap()
+                        en_passant_takeable_right_result.ok
+                        && en_passant_takeable_right_result.unwrap()
                       ) {
                         moves.push(en_passant_right);
+                      }
+                    }
+                  )
+                  .run();
+              }
+            )
+            .run();
+        }
+      )
+      .run();
+    return Ok(moves);
+  }
+
+  private bishop_moves(
+    pos: Position
+  ): Result<Position[], string> {
+    let moves: Position[] = [];
+    let cell_result: Result<Option<ChessPiece>, string> = this.get_cell(pos);
+    match<boolean>(cell_result.ok)
+      .with(false, () => Err(cell_result.val as string))
+      .with(
+        true,
+        () => {
+          let maybe_piece: Option<ChessPiece> = cell_result.unwrap();
+          match<boolean>(maybe_piece.some)
+            .with(false, () => Err("The given position was not a piece."))
+            .with(
+              true,
+              () => {
+                let piece: ChessPiece = maybe_piece.unwrap();
+                match<boolean>(piece.get_piece_type() == PieceType.Bishop)
+                  .with(
+                    false,
+                    () => Err(
+                      "The given position was not a bishop."
+                    )
+                  )
+                  .with(
+                    true,
+                    () => {
+                      for (let i: number = 0; i < 8; i++) {
+                        let diagonals: Position[] = [
+                          new Position(
+                            pos.get_row() - i,
+                            pos.get_col() - i
+                          ),
+                          new Position(
+                            pos.get_row() - i,
+                            pos.get_col() + i
+                          ),
+                          new Position(
+                            pos.get_row() + i,
+                            pos.get_col() - i
+                          ),
+                          new Position(
+                            pos.get_row() + i,
+                            pos.get_col() + i
+                          )
+                        ];
+
+                        for (let j: number = 0; j < diagonals.length; j++) {
+                          let empty_result: Result<boolean, string>
+                            = this.get_if_empty_cell(diagonals[j]);
+                          let takeable_result: Result<boolean, string>
+                            = this.get_if_takeable_piece(
+                              piece.get_color(),
+                              diagonals[j]
+                            );
+                          if (
+                            (empty_result.ok && empty_result.unwrap())
+                            || (takeable_result.ok && takeable_result.unwrap())
+                          ) {
+                            moves.push(diagonals[j]);
+                          }
+                        }
+                      }
+                    }
+                  )
+                  .run();
+              }
+            )
+            .run();
+        }
+      )
+      .run();
+    return Ok(moves);
+  }
+
+  private knight_moves(
+    pos: Position
+  ): Result<Position[], string> {
+    let moves: Position[] = [];
+    let cell_result: Result<Option<ChessPiece>, string> = this.get_cell(pos);
+    match<boolean>(cell_result.ok)
+      .with(false, () => Err(cell_result.val as string))
+      .with(
+        true,
+        () => {
+          let maybe_piece: Option<ChessPiece> = cell_result.unwrap();
+          match<boolean>(maybe_piece.some)
+            .with(false, () => Err("The given position was not a piece."))
+            .with(
+              true,
+              () => {
+                let piece: ChessPiece = maybe_piece.unwrap();
+                match<boolean>(piece.get_piece_type() == PieceType.Knight)
+                  .with(
+                    false,
+                    () => Err(
+                      "The given position was not a knight."
+                    )
+                  )
+                  .with(
+                    true,
+                    () => {
+                      let hops: Position[] = [
+                        new Position(
+                          pos.get_row() - 2,
+                          pos.get_col() - 1
+                        ),
+                        new Position(
+                          pos.get_row() - 2,
+                          pos.get_col() + 1
+                        ),
+                        new Position(
+                          pos.get_row() + 2,
+                          pos.get_col() - 1
+                        ),
+                        new Position(
+                          pos.get_row() + 2,
+                          pos.get_col() + 1
+                        ),
+                        new Position(
+                          pos.get_row() - 1,
+                          pos.get_col() - 2
+                        ),
+                        new Position(
+                          pos.get_row() + 1,
+                          pos.get_col() - 2
+                        ),
+                        new Position(
+                          pos.get_row() - 1,
+                          pos.get_col() + 2
+                        ),
+                        new Position(
+                          pos.get_row() + 1,
+                          pos.get_col() + 2
+                        )
+                      ];
+
+                      for (let j: number = 0; j < hops.length; j++) {
+                        let empty_result: Result<boolean, string>
+                          = this.get_if_empty_cell(hops[j]);
+                        let takeable_result: Result<boolean, string>
+                          = this.get_if_takeable_piece(
+                            piece.get_color(),
+                            hops[j]
+                          );
+                        if (
+                          (empty_result.ok && empty_result.unwrap())
+                          || (takeable_result.ok && takeable_result.unwrap())
+                        ) {
+                          moves.push(hops[j]);
+                        }
+                      }
+                    }
+                  )
+                  .run();
+              }
+            )
+            .run();
+        }
+      )
+      .run();
+    return Ok(moves);
+  }
+
+  private all_rook_moves(
+    pos: Position
+  ): Result<Position[], string> {
+    let moves_result: Result<Position[], string> = this.rook_moves(pos);
+    return match<boolean>(moves_result.ok)
+      .with(false, () => Err(moves_result.val as string))
+      .with(
+        true,
+        () => Ok(
+          moves_result.unwrap().concat(
+            this.rook_castling(pos).unwrap()
+          )
+        )
+      )
+      .run();
+  }
+
+  private rook_moves(
+    pos: Position
+  ): Result<Position[], string> {
+    let moves: Position[] = [];
+    let cell_result: Result<Option<ChessPiece>, string> = this.get_cell(pos);
+    match<boolean>(cell_result.ok)
+      .with(false, () => Err(cell_result.val as string))
+      .with(
+        true,
+        () => {
+          let maybe_piece: Option<ChessPiece> = cell_result.unwrap();
+          match<boolean>(maybe_piece.some)
+            .with(false, () => Err("The given position was not a piece."))
+            .with(
+              true,
+              () => {
+                let piece: ChessPiece = maybe_piece.unwrap();
+                match<boolean>(piece.get_piece_type() == PieceType.Rook)
+                  .with(
+                    false,
+                    () => Err(
+                      "The given position was not a rook."
+                    )
+                  )
+                  .with(
+                    true,
+                    () => {
+                      for (let i: number = 0; i < 8; i++) {
+                        let cardinals: Position[] = [
+                          new Position(
+                            pos.get_row() - i,
+                            pos.get_col()
+                          ),
+                          new Position(
+                            pos.get_row() + i,
+                            pos.get_col()
+                          ),
+                          new Position(
+                            pos.get_row(),
+                            pos.get_col() - i
+                          ),
+                          new Position(
+                            pos.get_row(),
+                            pos.get_col() + i
+                          )
+                        ];
+
+                        for (let j: number = 0; j < cardinals.length; j++) {
+                          let empty_result: Result<boolean, string>
+                            = this.get_if_empty_cell(cardinals[j]);
+                          let takeable_result: Result<boolean, string>
+                            = this.get_if_takeable_piece(
+                              piece.get_color(),
+                              cardinals[j]
+                            );
+                          if (
+                            (empty_result.ok && empty_result.unwrap())
+                            || (takeable_result.ok && takeable_result.unwrap())
+                          ) {
+                            moves.push(cardinals[j]);
+                          }
+                        }
+                      }
+                    }
+                  )
+                  .run();
+              }
+            )
+            .run();
+        }
+      )
+      .run();
+    return Ok(moves);
+  }
+
+  private rook_castling(pos: Position): Result<Position[], string> {
+    let moves: Position[] = [];
+    let cell_result: Result<Option<ChessPiece>, string> = this.get_cell(pos);
+    match<boolean>(cell_result.ok)
+      .with(false, () => Err(cell_result.val as string))
+      .with(
+        true,
+        () => {
+          let maybe_piece: Option<ChessPiece> = cell_result.unwrap();
+          match<boolean>(maybe_piece.some)
+            .with(false, () => Err("The given position was not a piece."))
+            .with(
+              true,
+              () => {
+                let piece: ChessPiece = maybe_piece.unwrap();
+                match<boolean>(piece.get_piece_type() == PieceType.Rook)
+                  .with(false, () => Err("The given position was not a rook."))
+                  .with(
+                    true,
+                    () => {
+                      let en_passant_left: Position;
+                      let en_passant_right: Position;
+
+                      if (piece.get_color() == Color.White) {
+                        en_passant_left = new Position(
+                          pos.get_row() - 1,
+                          pos.get_col() - 1
+                        );
+                        en_passant_right = new Position(
+                          pos.get_row() - 1,
+                          pos.get_col() + 1
+                        );
+                      } else {
+                        en_passant_left = new Position(
+                          pos.get_row() + 1,
+                          pos.get_col() - 1
+                        );
+                        en_passant_right = new Position(
+                          pos.get_row() + 1,
+                          pos.get_col() + 1
+                        );
+                      }
+
+                      let en_passant_enemy_left: Position = new Position(
+                        pos.get_row(),
+                        pos.get_col() - 1
+                      );
+                      let en_passant_enemy_right: Position = new Position(
+                        pos.get_row(),
+                        pos.get_col() + 1
+                      );
+
+                      let en_passant_takeable_left_result: Result<boolean, string>
+                        = this.get_enemy_piece(
+                          piece.get_color(), en_passant_enemy_left
+                        );
+                      let en_passant_takeable_right_result:
+                        Result<boolean, string>
+                        = this.get_enemy_piece(
+                          piece.get_color(), en_passant_enemy_right
+                        );
+
+                      if (
+                        en_passant_takeable_left_result.ok
+                        && en_passant_takeable_left_result.unwrap()
+                      ) {
+                        moves.push(en_passant_left);
+                      }
+                      if (
+                        en_passant_takeable_right_result.ok
+                        && en_passant_takeable_right_result.unwrap()
+                      ) {
+                        moves.push(en_passant_right);
+                      }
+                    }
+                  )
+                  .run();
+              }
+            )
+            .run();
+        }
+      )
+      .run();
+    return Ok(moves);
+  } 
+
+  private queen_moves(
+    pos: Position
+  ): Result<Position[], string> {
+    let moves: Position[] = [];
+    let cell_result: Result<Option<ChessPiece>, string> = this.get_cell(pos);
+    match<boolean>(cell_result.ok)
+      .with(false, () => Err(cell_result.val as string))
+      .with(
+        true,
+        () => {
+          let maybe_piece: Option<ChessPiece> = cell_result.unwrap();
+          match<boolean>(maybe_piece.some)
+            .with(false, () => Err("The given position was not a piece."))
+            .with(
+              true,
+              () => {
+                let piece: ChessPiece = maybe_piece.unwrap();
+                match<boolean>(piece.get_piece_type() == PieceType.Queen)
+                  .with(
+                    false,
+                    () => Err(
+                      "The given position was not a queen."
+                    )
+                  )
+                  .with(
+                    true,
+                    () => {
+                      for (let i: number = 0; i < 8; i++) {
+                        let all: Position[] = [
+                          new Position(
+                            pos.get_row() - i,
+                            pos.get_col()
+                          ),
+                          new Position(
+                            pos.get_row() + i,
+                            pos.get_col()
+                          ),
+                          new Position(
+                            pos.get_row(),
+                            pos.get_col() - i
+                          ),
+                          new Position(
+                            pos.get_row(),
+                            pos.get_col() + i
+                          ),
+                          new Position(
+                            pos.get_row() - i,
+                            pos.get_col() - i
+                          ),
+                          new Position(
+                            pos.get_row() - i,
+                            pos.get_col() + i
+                          ),
+                          new Position(
+                            pos.get_row() + i,
+                            pos.get_col() - i
+                          ),
+                          new Position(
+                            pos.get_row() + i,
+                            pos.get_col() + i
+                          )
+                        ];
+
+                        for (let j: number = 0; j < all.length; j++) {
+                          let empty_result: Result<boolean, string>
+                            = this.get_if_empty_cell(all[j]);
+                          let takeable_result: Result<boolean, string>
+                            = this.get_if_takeable_piece(
+                              piece.get_color(),
+                              all[j]
+                            );
+                          if (
+                            (empty_result.ok && empty_result.unwrap())
+                            || (takeable_result.ok && takeable_result.unwrap())
+                          ) {
+                            moves.push(all[j]);
+                          }
+                        }
+                      }
+                    }
+                  )
+                  .run();
+              }
+            )
+            .run();
+        }
+      )
+      .run();
+    return Ok(moves);
+  }
+
+  private king_moves(
+    pos: Position
+  ): Result<Position[], string> {
+    let moves: Position[] = [];
+    let cell_result: Result<Option<ChessPiece>, string> = this.get_cell(pos);
+    match<boolean>(cell_result.ok)
+      .with(false, () => Err(cell_result.val as string))
+      .with(
+        true,
+        () => {
+          let maybe_piece: Option<ChessPiece> = cell_result.unwrap();
+          match<boolean>(maybe_piece.some)
+            .with(false, () => Err("The given position was not a piece."))
+            .with(
+              true,
+              () => {
+                let piece: ChessPiece = maybe_piece.unwrap();
+                match<boolean>(piece.get_piece_type() == PieceType.King)
+                  .with(
+                    false,
+                    () => Err(
+                      "The given position was not a king."
+                    )
+                  )
+                  .with(
+                    true,
+                    () => {
+                      let all: Position[] = [
+                        new Position(
+                          pos.get_row() - 1,
+                          pos.get_col()
+                        ),
+                        new Position(
+                          pos.get_row() - 1,
+                          pos.get_col() - 1
+                        ),
+                        new Position(
+                          pos.get_row() - 1,
+                          pos.get_col() + 1
+                        ),
+                        new Position(
+                          pos.get_row() + 1,
+                          pos.get_col()
+                        ),
+                        new Position(
+                          pos.get_row() + 1,
+                          pos.get_col() - 1
+                        ),
+                        new Position(
+                          pos.get_row() + 1,
+                          pos.get_col() + 1
+                        ),
+                        new Position(
+                          pos.get_row(),
+                          pos.get_col() - 1
+                        ),
+                        new Position(
+                          pos.get_row(),
+                          pos.get_col() + 1
+                        )
+                      ];
+
+                      for (let j: number = 0; j < all.length; j++) {
+                        let empty_result: Result<boolean, string>
+                          = this.get_if_empty_cell(all[j]);
+                        let takeable_result: Result<boolean, string>
+                          = this.get_if_takeable_piece(
+                            piece.get_color(),
+                            all[j]
+                          );
+                        if (
+                          (empty_result.ok && empty_result.unwrap())
+                          || (takeable_result.ok && takeable_result.unwrap())
+                        ) {
+                          moves.push(all[j]);
+                        }
                       }
                     }
                   )
@@ -432,18 +993,24 @@ export class ChessModel {
         return Ok(cell.unwrap().get_color() == get_enemy_color(color));
       }
     }
-    /*
-    if (this.invalid_pos(pos)) {
-      return false;
+  }
+
+  private get_if_takeable_piece(
+    color: Color, pos: Position
+  ): Result<boolean, string> {
+    let cell_result: Result<Option<ChessPiece>, string> = this.get_cell(pos);
+    if (cell_result.err) {
+      return cell_result;
     } else {
-      let maybe_piece: Option<ChessPiece> = this.get_cell(pos).unwrap();
-      if (maybe_piece.none) {
-        return false;
+      let cell: Option<ChessPiece> = cell_result.val;
+      if (cell.none) {
+        return Ok(false);
       } else {
-        let piece: ChessPiece = maybe_piece.unwrap();
-        return piece.get_color() == get_enemy_color(color);
+        return Ok(
+          (cell.unwrap().get_color() == get_enemy_color(color))
+          && cell.unwrap().get_piece_type() != PieceType.King
+        );
       }
     }
-    */
   }
 }
