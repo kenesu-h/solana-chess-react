@@ -182,17 +182,40 @@ export class ChessModel {
       return Err(moves_result.val as string);
     } else {
       let piece: ChessPiece = this.get_cell(pos).unwrap().unwrap();
-      let moves: Position[] = moves_result.unwrap();
-      if (moves.some((p) => p.equals(dest))) {
-        this.board[dest.get_row()][dest.get_col()] = Some(piece);
-        this.board[pos.get_row()][pos.get_col()] = None;
-        piece.set_moved(true);
-        return Ok(None)
+      if (piece.get_color() == this.whose_turn) {
+        let moves: Position[] = moves_result.unwrap();
+        if (moves.some((p) => p.equals(dest))) {
+          // Account for en passant
+          let en_passant_result: Result<Position[], string>
+            = this.pawn_en_passant(pos);
+          if (en_passant_result.err) {
+            return Err(en_passant_result.val as string);
+          } else {
+            let en_passant: Position[] = en_passant_result.unwrap();
+            if (en_passant.some((p) => p.equals(dest))) {
+              this.board[
+                match<Color>(piece.get_color())
+                  .with(Color.White, () => dest.get_row() + 1)
+                  .with(Color.Black, () => dest.get_row() - 1)
+                  .run()
+              ]
+              [dest.get_col()] = None;
+            }
+          }
+
+          this.board[dest.get_row()][dest.get_col()] = Some(piece);
+          this.board[pos.get_row()][pos.get_col()] = None; 
+          piece.set_moved(true);
+          this.end_turn();
+          return Ok(None)
+        } else {
+          return Err(
+            "The piece at " + pos.to_string() + " can't be moved to "
+            + "its destination at " + dest.to_string()
+          );
+        }
       } else {
-        return Err(
-          "The piece at " + pos.to_string() + " can't be moved to "
-          + "its destination at " + dest.to_string()
-        );
+        return Err("You can't move that piece, it's not this color's turn yet.");
       }
     }
   }
@@ -259,8 +282,6 @@ export class ChessModel {
                       );
                       let one_forward_result: Result<boolean, string>
                         = this.get_if_empty_cell(one_forward);
-                      console.log(one_forward);
-                      console.log(one_forward_result);
                       if (
                         one_forward_result.ok
                         && one_forward_result.unwrap()

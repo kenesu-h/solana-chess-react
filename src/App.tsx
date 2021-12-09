@@ -84,7 +84,7 @@ const App = () => {
   }
 
   function renderSelectableCell(
-    moves: Position[], maybe_piece: Option<ChessPiece>, row: number, col: number
+    maybe_piece: Option<ChessPiece>, row: number, col: number
   ): JSX.Element {
     let position: Position = new Position(row, col);
     return (
@@ -92,7 +92,11 @@ const App = () => {
         className="cell-selectable"
         onClick={
           () => {
-            console.log(model.move_piece_at(selected.unwrap(), position));
+            let move_result: Result<None, string>
+              = model.move_piece_at(selected.unwrap(), position);
+            if (move_result.err) {
+              alert(move_result.val);
+            }
             setSelected(None);
             setModel(model);
           }
@@ -124,7 +128,7 @@ const App = () => {
         let moves: Position[] = moves_result.unwrap();
         for (let j: number = 0; j < 8; j++) {
           if (moves.some((p) => p.equals(new Position(row, j)))) {
-            rendered.push(renderSelectableCell(moves, cells[j], row, j));
+            rendered.push(renderSelectableCell(cells[j], row, j));
           } else {
             rendered.push(renderCell(cells[j], row, j));
           }
