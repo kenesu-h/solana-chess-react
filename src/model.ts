@@ -483,7 +483,8 @@ export class ChessModel {
                   .with(
                     true,
                     () => {
-                      for (let i: number = 0; i < 8; i++) {
+                      let spread_done: boolean[] = [false, false, false, false];
+                      for (let i: number = 1; i < 8; i++) {
                         let diagonals: Position[] = [
                           new Position(
                             pos.get_row() - i,
@@ -510,12 +511,22 @@ export class ChessModel {
                             = this.get_if_takeable_piece(
                               piece.get_color(),
                               diagonals[j]
-                            );
+                            ); 
                           if (
-                            (empty_result.ok && empty_result.unwrap())
-                            || (takeable_result.ok && takeable_result.unwrap())
+                            !spread_done[j]
+                            && (
+                              (empty_result.ok && empty_result.unwrap())
+                              || (
+                                  takeable_result.ok
+                                  && takeable_result.unwrap()
+                              )
+                            )
                           ) {
                             moves.push(diagonals[j]);
+                          }
+                          if (empty_result.ok) {
+                            spread_done[j] = spread_done[j]
+                              || !empty_result.unwrap();
                           }
                         }
                       }
@@ -664,7 +675,8 @@ export class ChessModel {
                   .with(
                     true,
                     () => {
-                      for (let i: number = 0; i < 8; i++) {
+                      let spread_done: boolean[] = [false, false, false, false];
+                      for (let i: number = 1; i < 8; i++) {
                         let cardinals: Position[] = [
                           new Position(
                             pos.get_row() - i,
@@ -691,12 +703,21 @@ export class ChessModel {
                             = this.get_if_takeable_piece(
                               piece.get_color(),
                               cardinals[j]
-                            );
+                            ); 
                           if (
-                            (empty_result.ok && empty_result.unwrap())
-                            || (takeable_result.ok && takeable_result.unwrap())
+                            !spread_done[j]
+                            && (
+                              (empty_result.ok && empty_result.unwrap())
+                              || (
+                                takeable_result.ok && takeable_result.unwrap()
+                              )
+                            )
                           ) {
                             moves.push(cardinals[j]);
+                          }
+                          if (empty_result.ok) {
+                            spread_done[j] = spread_done[j]
+                              || !empty_result.unwrap();
                           }
                         }
                       }
@@ -825,7 +846,17 @@ export class ChessModel {
                   .with(
                     true,
                     () => {
-                      for (let i: number = 0; i < 8; i++) {
+                      let spread_done: boolean[] = [
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false
+                      ];
+                      for (let i: number = 1; i < 8; i++) {
                         let all: Position[] = [
                           new Position(
                             pos.get_row() - i,
@@ -868,12 +899,21 @@ export class ChessModel {
                             = this.get_if_takeable_piece(
                               piece.get_color(),
                               all[j]
-                            );
+                            ); 
                           if (
-                            (empty_result.ok && empty_result.unwrap())
-                            || (takeable_result.ok && takeable_result.unwrap())
+                            !spread_done[j]
+                            && (
+                              (empty_result.ok && empty_result.unwrap())
+                              || (
+                                takeable_result.ok && takeable_result.unwrap()
+                              )
+                            )
                           ) {
                             moves.push(all[j]);
+                          }
+                          if (empty_result.ok) {
+                            spread_done[j] = spread_done[j]
+                              || !empty_result.unwrap();
                           }
                         }
                       }
@@ -978,6 +1018,10 @@ export class ChessModel {
     return Ok(moves);
   }
 
+  private get_if_cell_checked(pos: Position): boolean {
+    return false;
+  }
+
   private invalid_pos(pos: Position): boolean {
     return pos.get_row() < 0 || pos.get_row() >= 8
         || pos.get_col() < 0 || pos.get_col() >= 8;
@@ -996,7 +1040,7 @@ export class ChessModel {
     if (cell_result.err) {
       return cell_result;
     } else {
-      return Ok(cell_result.val.none);
+      return Ok(cell_result.unwrap().none);
     }
   }
 
