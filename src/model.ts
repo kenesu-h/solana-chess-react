@@ -1015,11 +1015,44 @@ export class ChessModel {
         }
       )
       .run();
-    return Ok(moves);
+    let checked: Position[] = Array.from(this.get_checked_cells());
+    let filtered: Position[] = [];
+    // O(n^2), EWWW!!!
+    for (let i: number = 0; i < moves.length; i++) {
+      let in_check: boolean = false;
+      for (let j: number = 0; j < checked.length; j++) {
+        in_check = in_check || moves[i].equals(checked[j]);
+      }
+      if (!in_check) {
+        filtered.push(moves[i]);
+      }
+    }
+    return Ok(filtered);
   }
 
-  private get_if_cell_checked(pos: Position): boolean {
-    return false;
+  private get_checked_cells(): Set<Position> {
+    let checked: Set<Position> = new Set();
+    for (let i: number = 0; i < 8; i++) {
+      for (let j: number = 0; j < 8; j++) {
+        if (this.board[i][j].some) {
+          if (
+            this.board[i][j].unwrap().get_piece_type() != PieceType.King
+            && (this.board[i][j].unwrap().get_color()
+              == get_enemy_color(this.whose_turn)) 
+          ) {
+            let moves_result: Result<Position[], string>
+              = this.get_moves_at(new Position(i, j));
+            if (moves_result.ok) {
+              let moves: Position[] = moves_result.unwrap();
+              for (let k: number = 0; k < moves.length; k++) {
+                checked.add(moves[k]);
+              }
+            }
+          }
+        }
+      }
+    }
+    return checked;
   }
 
   private invalid_pos(pos: Position): boolean {
